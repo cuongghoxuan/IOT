@@ -9,8 +9,8 @@
 // ────────────────────────────────────────────────
 // WiFi & HiveMQ Cloud Config (Thay thông tin của bạn vào đây)
 // ────────────────────────────────────────────────
-const char* ssid     = "Wokwi-GUEST"; 
-const char* password = "";
+const char* ssid     = "LAU 1A"; 
+const char* password = "78787878";
 
 // Lấy từ Console HiveMQ Cloud (Ví dụ: xxxxxxxx.s1.eu.hivemq.cloud)
 const char* mqtt_server   = "53096db1c4e64e078478b373c96ab3a8.s1.eu.hivemq.cloud"; 
@@ -31,7 +31,7 @@ PubSubClient client(espClient);
 #define ECHO_PIN       18
 #define SOIL_PIN       34
 #define DHT_PIN        4
-#define DHT_TYPE       DHT22
+#define DHT_TYPE       DHT11
 #define PUMP1_PIN      26   // Bơm tưới cây
 #define PUMP2_PIN      27   // Bơm cấp nước vào bồn
 

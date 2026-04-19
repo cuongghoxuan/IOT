@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Hệ Thống Giám Sát Nông Nghiệp Thông Minh | Dashboard</title>
+    <!-- Google Fonts & Font Awesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- MQTT over WebSocket (Paho) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: #0b1a1e;
+            padding: 24px 20px;
+            color: #e6f7f0;
+        }
+
+        /* container chính */
+        .dashboard {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* header */
+        .header {
+            margin-bottom: 28px;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            border-bottom: 1px solid #2c4a3e;
+            padding-bottom: 16px;
+        }
+        .title h1 {
+            font-weight: 600;
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, #c0f2b2, #8bcb8a);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.3px;
+        }
+        .title p {
+            font-size: 0.85rem;
+            color: #91b3a5;
+            margin-top: 6px;
+        }
+        .conn-status {
+            background: #0f2c24;
+            padding: 8px 18px;
+            border-radius: 60px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(4px);
+        }
+        .led {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #f87171;
+            box-shadow: 0 0 6px #f87171;
+            transition: 0.2s;
+        }
+        .led.online {
+            background-color: #4ade80;
+            box-shadow: 0 0 8px #4ade80;
+        }
+
+        /* card grid */
+        .grid-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+        .card {
+            background: #11231f;
+            border-radius: 28px;
+            padding: 18px 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
+            border: 1px solid #2a4a3e;
+            backdrop-filter: blur(2px);
+        }
+        .card:hover {
+            transform: translateY(-3px);
+            border-color: #5aa97f;
+        }
+        .card-icon {
+            font-size: 2rem;
+            color: #93d0a3;
+            margin-bottom: 12px;
+        }
+        .card-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+            color: #9fc5b5;
+        }
+        .card-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 8px 0 4px;
+            line-height: 1.2;
+        }
+        .unit {
+            font-size: 1rem;
+            font-weight: 400;
+            color: #b7dfce;
+        }
+        .sub-current {
+            font-size: 0.7rem;
+            color: #b7d0c2;
+            border-top: 1px dashed #2a5a48;
+            padding-top: 6px;
+            margin-top: 6px;
+        }
+
+        /* pump row */
+        .pump-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 22px;
+            margin-bottom: 32px;
+        }
+        .pump-card {
+            background: #0f2620;
+            border-radius: 28px;
+            padding: 18px 25px;
+            flex: 1;
+            min-width: 200px;
+            border: 1px solid #2f5f4b;
+            box-shadow: 0 8px 14px rgba(0,0,0,0.25);
+        }
+        .pump-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .pump-status {
+            font-size: 1rem;
+            background: #071b16;
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 40px;
+            margin: 12px 0;
+            font-weight: 500;
+        }
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 12px;
+        }
+        .btn-pump {
+            background: #1f4036;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-pump.on-btn {
+            background: #2b7a4b;
+        }
+        .btn-pump.off-btn {
+            background: #4e2a2a;
+        }
+        .btn-pump:hover {
+            filter: brightness(1.1);
+            transform: scale(0.97);
+        }
+        .state-badge {
+            background: #1b4438;
+            border-radius: 30px;
+            padding: 6px 15px;
+            font-size: 0.85rem;
+            width: fit-content;
+        }
+
+        /* chart & AI insights */
+        .insight-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+        .chart-container {
+            flex: 2;
+            min-width: 280px;
+            background: #11231f;
+            border-radius: 28px;
+            padding: 20px;
+            border: 1px solid #2c5746;
+        }
+        .ai-box {
+            flex: 1.2;
+            background: #0e241f;
+            border-radius: 28px;
+            padding: 20px;
+            border-left: 5px solid #6bcb9a;
+            box-shadow: 0 5px 12px rgba(0,0,0,0.3);
+        }
+        .ai-box h3 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            color: #c0f2cf;
+        }
+        .ai-message {
+            font-size: 1rem;
+            line-height: 1.45;
+            background: #071f19;
+            padding: 18px;
+            border-radius: 24px;
+            color: #e2f3ea;
+        }
+        /* biểu đồ cột mực nước bồn (lịch sử giả lập) */
+        .water-history {
+            background: #11231f;
+            border-radius: 28px;
+            padding: 18px;
+            margin-top: 10px;
+        }
+        .water-title {
+            font-weight: 600;
+            margin-bottom: 16px;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .bar-chart-simple {
+            display: flex;
+            align-items: flex-end;
+            gap: 18px;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+        .bar-item {
+            text-align: center;
+            width: 50px;
+            flex-shrink: 0;
+        }
+        .bar {
+            background: #479f74;
+            width: 35px;
+            margin: 0 auto;
+            border-radius: 12px 12px 8px 8px;
+            transition: height 0.3s;
+            min-height: 4px;
+        }
+        .bar-label {
+            font-size: 0.7rem;
+            margin-top: 8px;
+            color: #bedfd1;
+        }
+        .note-text {
+            font-size: 0.7rem;
+            margin-top: 12px;
+            text-align: center;
+            color: #7fa392;
+        }
+        hr {
+            border-color: #2b5846;
+            margin: 15px 0;
+        }
+        @media (max-width: 680px) {
+            body { padding: 16px; }
+            .card-value { font-size: 1.8rem; }
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 0.7rem;
+            color: #628d7a;
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard">
+    <div class="header">
+        <div class="title">
+            <h1><i class="fas fa-tractor" style="margin-right: 8px;"></i> HỆ THỐNG GIÁM SÁT NÔNG NGHIỆP THÔNG MINH</h1>
+            <p>Giám sát thời gian thực | Điều khiển bơm từ xa | AI Insights</p>
+        </div>
+        <div class="conn-status" id="connStatusDiv">
+            <span class="led" id="mqttLed"></span>
+            <span id="mqttStatusText">ĐANG KẾT NỐI MQTT...</span>
+        </div>
+    </div>
+
+    <!-- 4 thông số chính -->
+    <div class="grid-stats">
+        <div class="card">
+            <div class="card-icon"><i class="fas fa-tint"></i></div>
+            <div class="card-label">ĐỘ ẨM ĐẤT (Soil Moisture)</div>
+            <div class="card-value"><span id="soilVal">--</span><span class="unit">%</span></div>
+            <div class="sub-current">Current: <span id="soilCurr">--</span>%</div>
+        </div>
+        <div class="card">
+            <div class="card-icon"><i class="fas fa-thermometer-half"></i></div>
+            <div class="card-label">NHIỆT ĐỘ</div>
+            <div class="card-value"><span id="tempVal">--</span><span class="unit">°C</span></div>
+            <div class="sub-current">Current: <span id="tempCurr">--</span>°C</div>
+        </div>
+        <div class="card">
+            <div class="card-icon"><i class="fas fa-cloud-rain"></i></div>
+            <div class="card-label">ĐỘ ẨM KHÔNG KHÍ</div>
+            <div class="card-value"><span id="humVal">--</span><span class="unit">%</span></div>
+            <div class="sub-current">Current: <span id="humCurr">--</span>%</div>
+        </div>
+        <div class="card">
+            <div class="card-icon"><i class="fas fa-water"></i></div>
+            <div class="card-label">MỰC NƯỚC BỒN</div>
+            <div class="card-value"><span id="waterVal">--</span><span class="unit">%</span></div>
+            <div class="sub-current">Current: <span id="waterCurr">--</span>%</div>
+        </div>
+    </div>
+
+    <!-- Bơm tưới & bơm cấp nước -->
+    <div class="pump-section">
+        <div class="pump-card">
+            <div class="pump-title"><i class="fas fa-water-pump"></i> BƠM TƯỚI (Pump 1)</div>
+            <div class="pump-status" id="pump1Status">TRẠNG THÁI: <span id="pump1State">ĐANG TẮT</span></div>
+        </div>
+        <div class="pump-card">
+            <div class="pump-title"><i class="fas fa-fill-drip"></i> BƠM CẤP NƯỚC (Pump 2)</div>
+            <div class="state-badge" id="pump2Badge">⚙️ TỰ ĐỘNG THEO MỰC NƯỚC</div>
+            <div class="pump-status" style="margin-top: 12px;">TRẠNG THÁI: <span id="pump2State">TẮT</span></div>
+        </div>
+    </div>
+
+    <!-- Khu vực BIỂU ĐỒ ĐƯỜNG & AI Insights -->
+    <div class="insight-row">
+        <div class="chart-container">
+            <h4 style="margin-bottom: 12px;"><i class="fas fa-chart-line"></i> COMBINED LINE CHART</h4>
+            <canvas id="sensorChart" width="400" height="200" style="max-height: 260px; width:100%"></canvas>
+            <div style="font-size: 0.7rem; text-align: center; margin-top: 12px;">📈 Độ ẩm đất (%) - Nhiệt độ (°C) - Độ ẩm KK (%) - Mực nước bồn (%)</div>
+        </div>
+        <div class="ai-box">
+            <h3><i class="fas fa-robot"></i> AI INSIGHTS · Chatbot AI</h3>
+            <div class="ai-message" id="aiMessageBox">
+                🤖 Chào bạn! Dữ liệu đang được cập nhật. Hệ thống sẽ đưa ra khuyến nghị thông minh dựa trên cảm biến.
+            </div>
+        </div>
+    </div>
+
+    <!-- BIỂU ĐỒ CỘT: MỰC NƯỚC BỒN NƯỚC (lịch sử giả lập kết hợp dữ liệu thực) -->
+    <div class="water-history">
+        <div class="water-title"><i class="fas fa-chart-simple"></i> MỰC NƯỚC BỒN NƯỚC (7 ngày gần nhất - %)</div>
+        <div id="historyBars" class="bar-chart-simple">
+            <!-- dynamic bars with js -->
+        </div>
+        <div class="note-text">📅 Dữ liệu cập nhật từ cảm biến và lưu lịch sử hiển thị theo ngày</div>
+    </div>
+    <footer>🌱 Giám sát thông minh · Điều khiển bơm tưới qua MQTT · Dữ liệu realtime từ ESP32</footer>
+</div>
+
+<script>
+    // ----- CẤU HÌNH MQTT (dựa theo thông số code ESP32 của bạn)
+    const mqttBroker = "wss://53096db1c4e64e078478b373c96ab3a8.s1.eu.hivemq.cloud:8884/mqtt";
+    const mqttOptions = {
+        userName: "XUANCUONG",
+        password: "Hoxuancuong26082005@",
+        useSSL: true,
+        keepAliveInterval: 30
+    };
+    const topicSensor = "group7/irrigation/sensor";
+    const topicCommand = "group7/irrigation/command";
+
+    // Biến toàn cục
+    let clientMqtt = null;
+    let reconnectTimeout = null;
+    let chartInstance = null;
+
+    // Lưu dữ liệu lịch sử cho biểu đồ đường (tối đa 20 điểm)
+    let historyData = {
+        labels: [],
+        soil: [],
+        temp: [],
+        hum: [],
+        water: []
+    };
+
+    // Lưu lịch sử mực nước bồn 7 ngày (hiển thị cột)
+    let waterHistoryDays = []; // { dateLabel, value }
+
+    // DOM elements
+    const soilSpan = document.getElementById('soilVal');
+    const soilCurr = document.getElementById('soilCurr');
+    const tempSpan = document.getElementById('tempVal');
+    const tempCurr = document.getElementById('tempCurr');
+    const humSpan = document.getElementById('humVal');
+    const humCurr = document.getElementById('humCurr');
+    const waterSpan = document.getElementById('waterVal');
+    const waterCurr = document.getElementById('waterCurr');
+    const pump1StateSpan = document.getElementById('pump1State');
+    const pump2StateSpan = document.getElementById('pump2State');
+    const aiMsgDiv = document.getElementById('aiMessageBox');
+
+    // Trạng thái bơm từ ESP32 (mặc định)
+    let currentPump1 = false;   // false = OFF, true = ON
+    let currentPump2 = false;   // bơm cấp nước (tự động)
+
+    // ========== KHỞI TẠO BIỂU ĐỒ ==========
+    function initChart() {
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Độ ẩm đất (%)', data: [], borderColor: '#4bc0c0', backgroundColor: 'transparent', tension: 0.2, fill: false, pointRadius: 3 },
+                    { label: 'Nhiệt độ (°C)', data: [], borderColor: '#ff9f4a', backgroundColor: 'transparent', tension: 0.2, fill: false, pointRadius: 3 },
+                    { label: 'Độ ẩm không khí (%)', data: [], borderColor: '#86cf9a', backgroundColor: 'transparent', tension: 0.2, fill: false, pointRadius: 3 },
+                    { label: 'Mực nước bồn (%)', data: [], borderColor: '#68c3e0', backgroundColor: 'transparent', tension: 0.2, fill: false, pointRadius: 3 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    tooltip: { mode: 'index', intersect: false },
+                    legend: { labels: { color: '#d4f0e5', font: { size: 10 } }, position: 'top' }
+                },
+                scales: {
+                    y: { grid: { color: '#2a5a48' }, ticks: { color: '#c0e0d2' } },
+                    x: { ticks: { color: '#bfdfd0', maxRotation: 35, autoSkip: true } }
+                }
+            }
+        });
+    }
+
+    function addDataToChart(timestampLabel, soilVal, tempVal, humVal, waterVal) {
+        if (!chartInstance) return;
+        // giữ tối đa 20 điểm
+        if (historyData.labels.length >= 20) {
+            historyData.labels.shift();
+            historyData.soil.shift();
+            historyData.temp.shift();
+            historyData.hum.shift();
+            historyData.water.shift();
+            chartInstance.data.labels.shift();
+            chartInstance.data.datasets[0].data.shift();
+            chartInstance.data.datasets[1].data.shift();
+            chartInstance.data.datasets[2].data.shift();
+            chartInstance.data.datasets[3].data.shift();
+        }
+        historyData.labels.push(timestampLabel);
+        historyData.soil.push(soilVal);
+        historyData.temp.push(tempVal);
+        historyData.hum.push(humVal);
+        historyData.water.push(waterVal);
+        
+        chartInstance.data.labels = [...historyData.labels];
+        chartInstance.data.datasets[0].data = [...historyData.soil];
+        chartInstance.data.datasets[1].data = [...historyData.temp];
+        chartInstance.data.datasets[2].data = [...historyData.hum];
+        chartInstance.data.datasets[3].data = [...historyData.water];
+        chartInstance.update();
+    }
+
+    // Cập nhật lịch sử cột mực nước (lưu 7 ngày gần)
+    function updateWaterBarHistory(currentWaterPercent) {
+        const now = new Date();
+        const dayLabel = `${now.getDate()}/${now.getMonth()+1}`;
+        // tìm xem đã có ngày hôm nay chưa, nếu có thì cập nhật giá trị mới nhất
+        const existingIndex = waterHistoryDays.findIndex(item => item.label === dayLabel);
+        if (existingIndex !== -1) {
+            waterHistoryDays[existingIndex].value = currentWaterPercent;
+        } else {
+            waterHistoryDays.push({ label: dayLabel, value: currentWaterPercent });
+            // giữ tối đa 7 ngày
+            if (waterHistoryDays.length > 7) waterHistoryDays.shift();
+        }
+        renderBarChart();
+    }
+
+    function renderBarChart() {
+        const container = document.getElementById('historyBars');
+        if (!container) return;
+        if (waterHistoryDays.length === 0) {
+            container.innerHTML = '<div style="width:100%; text-align:center;">Chưa có dữ liệu lịch sử</div>';
+            return;
+        }
+        let html = '';
+        for (let i = 0; i < waterHistoryDays.length; i++) {
+            const item = waterHistoryDays[i];
+            const percent = Math.min(100, Math.max(0, item.value));
+            const barHeight = Math.max(6, (percent / 100) * 100); // chiều cao tối đa 100px
+            html += `
+                <div class="bar-item">
+                    <div class="bar" style="height: ${barHeight}px; background: #64bc8a;"></div>
+                    <div class="bar-label">${percent}%</div>
+                    <div style="font-size:0.65rem;">${item.label}</div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    }
+
+    // Tạo AI insight dựa trên dữ liệu hiện tại
+    function generateAIInsight(soil, temp, hum, water, pump1State) {
+        let advice = "";
+        if (soil > 80) advice = "🌿 Độ ẩm đất cao, hãy tạm dừng tưới để tránh úng rễ. ";
+        else if (soil < 40) advice = "💧 Độ ẩm đất thấp, cần tưới bổ sung. Hãy bật bơm tưới nếu cần. ";
+        else advice = "✅ Độ ẩm đất ổn định, cây phát triển tốt. ";
+        
+        if (temp > 32) advice += "🔥 Nhiệt độ cao, tăng cường giữ ẩm gốc. ";
+        else if (temp < 18) advice += "❄️ Nhiệt độ thấp, hạn chế tưới đêm. ";
+        
+        if (water < 25) advice += "⚠️ Mực nước bồn rất thấp! Bơm cấp nước sẽ tự động kích hoạt. ";
+        else if (water > 85) advice += "💦 Bồn nước gần đầy, bơm cấp sẽ dừng. ";
+        
+        if (pump1State) advice += "🚰 Bơm tưới đang HOẠT ĐỘNG. ";
+        else advice += "⏸️ Bơm tưới đang TẮT. ";
+        
+        return `🤖 Chatbot AI: ${advice} Duy trì điều kiện tối ưu cho vụ mùa. Độ ẩm đạt ${soil}% là lý tưởng. Kiểm soát mực nước bồn ở mức ${water}%.`;
+    }
+    
+    function updateDashboardWithData(payload) {
+        let temp = payload.temp ?? 0;
+        let hum = payload.hum ?? 0;
+        let soil = payload.soil ?? 0;
+        let water = payload.water_percent ?? 0;
+        let pump1 = payload.pump1 === 1 || payload.pump1 === true;
+        let pump2 = payload.pump2 === 1 || payload.pump2 === true;
+        
+        // Lưu các giá trị hiện tại để dùng cho AI Insights
+        window.currentSoilValue = soil;
+        window.currentTemp = temp;
+        window.currentHum = hum;
+        window.currentWater = water;
+        
+        currentPump1 = pump1;
+        currentPump2 = pump2;
+        
+        // Cập nhật giao diện
+        soilSpan.innerText = Math.round(soil);
+        soilCurr.innerText = Math.round(soil);
+        tempSpan.innerText = temp.toFixed(1);
+        tempCurr.innerText = temp.toFixed(1);
+        humSpan.innerText = Math.round(hum);
+        humCurr.innerText = Math.round(hum);
+        waterSpan.innerText = Math.round(water);
+        waterCurr.innerText = Math.round(water);
+        
+        pump1StateSpan.innerText = pump1 ? "ĐANG HOẠT ĐỘNG" : "TẮT";
+        pump2StateSpan.innerText = pump2 ? "ĐANG HOẠT ĐỘNG" : "TẮT";
+        
+        // Thêm vào biểu đồ đường (thời gian)
+        const nowTime = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        addDataToChart(nowTime, soil, temp, hum, water);
+        
+        // Cập nhật lịch sử cột nước bồn (7 ngày)
+        updateWaterBarHistory(water);
+    }
+    // Hàm gửi lệnh MQTT tới ESP32 (bơm tưới)
+    function sendPumpCommand(stateOn) {
+        if (!clientMqtt || !clientMqtt.isConnected()) {
+            aiMsgDiv.innerHTML = "⚠️ Mất kết nối MQTT, không thể gửi lệnh bơm! Vui lòng kiểm tra mạng.";
+            return;
+        }
+        const command = stateOn ? "PUMP_ON" : "PUMP_OFF";
+        const message = new Paho.MQTT.Message(command);
+        message.destinationName = topicCommand;
+        clientMqtt.send(message);
+        console.log(`Sent command: ${command}`);
+        aiMsgDiv.innerHTML = `🤖 Đã gửi lệnh ${command} đến ESP32. Chờ phản hồi...` + "<br>" + aiMsgDiv.innerHTML.split("🤖")[0];
+        setTimeout(() => {
+            if (currentPump1 !== undefined) {
+                // Cập nhật lại AI sau 0.5s
+                const insight = generateAIInsight(parseFloat(soilSpan.innerText) || 0, parseFloat(tempSpan.innerText) || 0, parseFloat(humSpan.innerText) || 0, parseFloat(waterSpan.innerText) || 0, stateOn);
+                aiMsgDiv.innerHTML = insight;
+            }
+        }, 500);
+    }
+    
+    // MQTT event handlers
+    function onConnect() {
+    document.getElementById('mqttLed').classList.add('online');
+    document.getElementById('mqttStatusText').innerHTML = 'MQTT ĐÃ KẾT NỐI';
+    if (clientMqtt) {
+        clientMqtt.subscribe(topicSensor);
+        console.log("Subscribed to sensor topic");
+    }
+}
+    
+    function onConnectionLost(response) {
+        document.getElementById('mqttLed').classList.remove('online');
+        document.getElementById('mqttStatusText').innerHTML = 'MẤT KẾT NỐI - ĐANG THỬ LẠI...';
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        reconnectTimeout = setTimeout(() => {
+            if (clientMqtt && !clientMqtt.isConnected()) {
+                clientMqtt.connect(mqttOptions);
+            }
+        }, 4000);
+    }
+    
+    function onMessageArrived(message) {
+        const payloadStr = message.payloadString;
+        try {
+            const data = JSON.parse(payloadStr);
+            updateDashboardWithData(data);
+            updateAIChatbotDisplay();
+        } catch(e) {
+            console.log("AI Message received:", payloadStr);
+            const aiMsgDiv = document.getElementById('aiMessageBox');
+            
+            if (payloadStr.startsWith("🤖 AI Insights:") || payloadStr.includes("AI Insights")) {
+                const thresholdMatch = payloadStr.match(/là (\d+)%/);
+                const threshold = thresholdMatch ? thresholdMatch[1] : "65";
+                window.currentThreshold = threshold;
+                
+                const currentSoil = window.currentSoilValue !== undefined ? window.currentSoilValue : "??";
+                const currentTemp = window.currentTemp !== undefined ? window.currentTemp : "??";
+                const currentHum = window.currentHum !== undefined ? window.currentHum : "??";
+                
+                const aiText = payloadStr.replace(/^🤖 AI Insights:\s*/, '');
+                
+                window.lastAIText = aiText;
+                window.lastThreshold = threshold;
+                
+                updateAIChatbotDisplay();
+                
+            } else if (payloadStr === "PUMP_ON") {
+                console.log("Pump ON command received");
+                updateAIChatbotDisplay();
+            } else if (payloadStr === "PUMP_OFF") {
+                console.log("Pump OFF command received");
+                updateAIChatbotDisplay();
+            } else if (payloadStr === "PUMP_IDLE") {
+                console.log("Pump IDLE");
+                updateAIChatbotDisplay();
+            } else {
+                aiMsgDiv.innerHTML = "🤖 " + payloadStr;
+            }
+        }
+    }
+
+    // Thêm hàm mới để cập nhật AI Chatbot dựa trên trạng thái bơm
+    function updateAIChatbotDisplay() {
+        const aiMsgDiv = document.getElementById('aiMessageBox');
+        const isPumpOn = currentPump1;
+        const currentSoil = window.currentSoilValue !== undefined ? window.currentSoilValue : 75;
+        const currentTemp = window.currentTemp !== undefined ? window.currentTemp : 28.5;
+        const currentHum = window.currentHum !== undefined ? window.currentHum : 64;
+        const threshold = window.currentThreshold || "75";
+        
+        if (isPumpOn) {
+            // ========== BƠM BẬT - Hiển thị phân tích chi tiết với threshold từ AI ==========
+            const needMore = Math.max(0, parseFloat(threshold) - currentSoil);
+            
+            let statusIcon = "";
+            let recommendation = "";
+            
+            if (needMore > 15) {
+                statusIcon = "💧💧💧";
+                recommendation = "Đất còn rất khô, cần tiếp tục tưới thêm.";
+            } else if (needMore > 5) {
+                statusIcon = "💧💧";
+                recommendation = "Sắp đạt độ ẩm lý tưởng, tiếp tục tưới thêm vài phút nữa.";
+            } else if (needMore > 0) {
+                statusIcon = "💧";
+                recommendation = "Gần đạt ngưỡng, theo dõi và dừng bơm sớm.";
+            } else {
+                statusIcon = "✅";
+                recommendation = "Đã đạt độ ẩm lý tưởng, nên dừng bơm để tránh úng rễ.";
+            }
+            
+            const displayMsg = `🤖 **AI Insights - Bơm đang HOẠT ĐỘNG** ${statusIcon}<br><br>
+            📊 <strong>Phân tích hiện tại:</strong><br>
+            • Độ ẩm đất: <strong style="color:#ff9f4a;">${currentSoil}%</strong><br>
+            • Nhiệt độ: <strong>${currentTemp}°C</strong> | Độ ẩm KK: <strong>${currentHum}%</strong><br><br>
+            🎯 <strong>Dự đoán AI:</strong> Độ ẩm đất lý tưởng nên đạt <strong style="color:#6bcb9a; font-size:1.2rem;">${threshold}%</strong><br>
+            ⏳ Cần tưới thêm <strong>${needMore}%</strong> nữa để đạt ngưỡng lý tưởng<br><br>
+            🌱 <strong>Khuyến nghị:</strong> ${recommendation}`;
+            
+            aiMsgDiv.innerHTML = displayMsg;
+            
+        } else {
+            // ========== BƠM TẮT - Chatbot trả lời tự nhiên, thân thiện ==========
+            
+            // Phân tích trạng thái cây dựa trên độ ẩm đất
+            let plantMessage = "";
+            let plantEmoji = "";
+            if (currentSoil < 35) {
+                plantMessage = "cây đang thiếu nước, lá có thể héo úa";
+                plantEmoji = "🥀";
+            } else if (currentSoil < 50) {
+                plantMessage = "độ ẩm đất hơi thấp, cây cần được tưới sớm";
+                plantEmoji = "🌱💛";
+            } else if (currentSoil < 70) {
+                plantMessage = "độ ẩm đất ổn định, cây đang phát triển tốt";
+                plantEmoji = "🌿😊";
+            } else if (currentSoil < 85) {
+                plantMessage = "đất đủ ẩm, cây thoải mái hấp thụ dinh dưỡng";
+                plantEmoji = "🍃👍";
+            } else {
+                plantMessage = "đất hơi ẩm quá mức, cần thoát nước tốt hơn";
+                plantEmoji = "💦⚠️";
+            }
+            
+            // Phân tích thời tiết dựa trên nhiệt độ
+            let weatherMessage = "";
+            let weatherEmoji = "";
+            if (currentTemp > 35) {
+                weatherMessage = "Hôm nay trời quá nóng, nên che bớt nắng cho cây và tưới vào sáng sớm hoặc chiều mát";
+                weatherEmoji = "🔥";
+            } else if (currentTemp > 32) {
+                weatherMessage = "Hôm nay trời khá nóng, cây dễ mất nước, hãy theo dõi độ ẩm thường xuyên";
+                weatherEmoji = "🌞";
+            } else if (currentTemp > 28) {
+                weatherMessage = "Thời tiết hôm nay ấm áp, rất thích hợp cho cây phát triển";
+                weatherEmoji = "☀️";
+            } else if (currentTemp > 22) {
+                weatherMessage = "Thời tiết dễ chịu, cây đang trong điều kiện lý tưởng";
+                weatherEmoji = "🌤️";
+            } else if (currentTemp < 18) {
+                weatherMessage = "Trời se lạnh, nên giảm tần suất tưới để tránh úng rễ";
+                weatherEmoji = "🍂";
+            } else {
+                weatherMessage = "Trời hơi lạnh, hạn chế tưới vào ban đêm";
+                weatherEmoji = "❄️";
+            }
+            
+            // Phân tích độ ẩm không khí
+            let humMessage = "";
+            if (currentHum < 40) {
+                humMessage = "không khí khô, cây thoát hơi nước nhanh hơn bình thường";
+            } else if (currentHum > 80) {
+                humMessage = "không khí khá ẩm, cần chú ý phòng tránh nấm bệnh";
+            } else {
+                humMessage = "độ ẩm không khí ở mức phù hợp";
+            }
+            
+            // Lời khuyên tổng hợp
+            let finalAdvice = "";
+            if (currentSoil < 45) {
+                finalAdvice = "Bạn nên bật bơm tưới để cây không bị khô héo nhé!";
+            } else if (currentSoil > 85) {
+                finalAdvice = "Đất đang khá ẩm, tạm thời chưa cần tưới, hãy kiểm tra hệ thống thoát nước.";
+            } else {
+                finalAdvice = "Độ ẩm đang ổn định, hãy duy trì và theo dõi thêm. Không cần lo lắng về ngập úng.";
+            }
+            
+            const displayMsg = `🤖 **Chatbot AI:** Chào bạn! Dựa trên dữ liệu hiện tại, ${plantMessage}. ${weatherEmoji} ${weatherMessage}. Không khí hiện tại ${humMessage}. ${finalAdvice}`;
+            
+            aiMsgDiv.innerHTML = displayMsg;
+        }
+    }
+
+    
+    function initMQTT() {
+        clientMqtt = new Paho.MQTT.Client(mqttBroker, "web_dashboard_" + Math.random().toString(36));
+        clientMqtt.onConnectionLost = onConnectionLost;
+        clientMqtt.onMessageArrived = onMessageArrived;
+        clientMqtt.connect({
+            userName: mqttOptions.userName,
+            password: mqttOptions.password,
+            useSSL: true,
+            onSuccess: onConnect,
+            onFailure: (err) => {
+                console.error("MQTT connect fail", err);
+                document.getElementById('mqttStatusText').innerHTML = 'KẾT NỐI THẤT BẠI';
+                setTimeout(() => {
+                    if (clientMqtt && !clientMqtt.isConnected()) clientMqtt.connect(mqttOptions);
+                }, 5000);
+            }
+        });
+    }
+    
+    // Tạo dữ liệu mẫu khởi tạo (để biểu đồ và cột hiển thị đẹp, nhưng sẽ được ghi đè bởi MQTT)
+    function seedMockDataOnce() {
+        // Tạo lịch sử 7 ngày giả lập (để giao diện không bị trống)
+        const mockWaterValues = [78, 82, 65, 88, 72, 68, 70];
+        const today = new Date();
+        for (let i = 6; i >= 0; i--) {
+            let d = new Date();
+            d.setDate(today.getDate() - i);
+            const label = `${d.getDate()}/${d.getMonth()+1}`;
+            waterHistoryDays.push({ label: label, value: mockWaterValues[i % mockWaterValues.length] });
+        }
+        renderBarChart();
+        // Thêm vài điểm cho chart
+        for (let i=0; i<6; i++) {
+            addDataToChart(`--`, 65 + i*2, 26 + i*0.5, 70 + i, 75 - i);
+        }
+        addDataToChart("now", 75, 28.5, 64, 88);
+        soilSpan.innerText = "75"; soilCurr.innerText="75";
+        tempSpan.innerText="28.5"; tempCurr.innerText="28.5";
+        humSpan.innerText="64"; humCurr.innerText="64";
+        waterSpan.innerText="88"; waterCurr.innerText="88";
+        pump1StateSpan.innerText="TẮT";
+        pump2StateSpan.innerText="TẮT";
+        aiMsgDiv.innerHTML = "🤖 Chatbot AI: Chào bạn! Dựa trên dữ liệu hiện tại, độ ẩm đạt 75% lý tưởng. Nên duy trì tưới tiêu hợp lý, không cần lo ngập úng.";
+    }
+    
+    // Khởi động
+    window.onload = () => {
+        initChart();
+        seedMockDataOnce();
+        initMQTT();
+    };
+</script>
+</body>
+</html>
